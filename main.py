@@ -14,7 +14,6 @@ hashing = Hashing(app)
 cors = CORS(app)
 
 app.config['UPLOAD_FOLDER'] = '/var/www/html/book-images/'
-app.config['UPLOAD_FOLDER_2'] = '/var/www/html/profile-pictures/'
 
 app.config['ALLOWED_EXTENSIONS'] = set(['png', 'gif', 'jpg'])
 
@@ -378,22 +377,22 @@ def update_user():
 
 
 
-@app.route('/users/profile_picture', methods = ['PUT'])
+@app.route('/users/profile_picture', methods = ['POST'])
 def update_profile_picture():
     collection = client.bookreviewer.users
     
     token = request.headers['token']
     username_header = request.headers['username']
 
-    if verify_token(username, token) and is_admin(username):
+    if verify_token(username_header, token):
         file = request.files['profilePicture'];
         filename = file.filename
 
         if file and allowed_file(file.filename):
-            file.save(os.path.join(app.config['UPLOAD_FOLDER_2'], filename));
+            file.save(os.path.join('/var/www/html/profile-pictures/', filename));
             photoPath = '/profile-pictures/' + filename
-            collection.update_one({'username':username},{'$set':{'profilePicture':photoPath}})
-            return str(collection.find_one({'username':username}))
+            collection.update_one({'username':username_header},{'$set':{'profilePicture':photoPath}})
+            return str(collection.find_one({'username':username_header}))
     
     return "failed"
 
