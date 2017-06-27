@@ -14,6 +14,7 @@ hashing = Hashing(app)
 cors = CORS(app)
 
 app.config['UPLOAD_FOLDER'] = '/var/www/html/book-images/'
+app.config['UPLOAD_FOLDER_2'] = '/var/www/html/profile-pictures/'
 
 app.config['ALLOWED_EXTENSIONS'] = set(['png', 'gif', 'jpg'])
 
@@ -240,10 +241,16 @@ def get_all_users():
     output = []
 
     for q in collection.find():
-        output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
-            'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
-            'age': q['age'], 'gender' : q['gender'], 'booksRead' : q['booksRead'], 
-            'booksRated' : q['booksRated'], 'reviewsRated' : q['reviewsRated']})
+        if 'profilePicture' in q:
+            output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
+                'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
+                'age': q['age'], 'gender' : q['gender'], 'booksRead' : q['booksRead'], 
+                'booksRated' : q['booksRated'], 'reviewsRated' : q['reviewsRated'], 'profilePicture' : q['profilePicture']})
+        else:
+            output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
+                'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
+                'age': q['age'], 'gender' : q['gender'], 'booksRead' : q['booksRead'], 
+                'booksRated' : q['booksRated'], 'reviewsRated' : q['reviewsRated']})
 
     return jsonify({'results' : output})
 
@@ -322,7 +329,7 @@ def make_admin(username):
 
 
 @app.route('/users/update/<username>/<field>', methods = ['PUT'])
-def update_user(username,field):
+def update_user_field(username,field):
     collection = client.bookreviewer.users
     
     token = request.headers['token']
@@ -345,6 +352,50 @@ def update_user(username,field):
     return "No rights for action"
 
 
+@app.route('/users/update_user', methods = ['PUT'])
+def update_user():
+    collection = client.bookreviewer.users
+    
+    token = request.headers['token']
+    username_header = request.headers['username']
+
+    email = request.form['email']
+    fname = request.form['fname']
+    lname = request.form['lname']
+    age = request.form['age']
+    gender = request.form['gender']
+
+    if (verify_token(username_header, token)):
+        collection.update({'username':username_header},{
+            '$set':{'email':email, 
+            'fname':fname,
+            'lname':lname,
+            'age':age,
+            'gender':gender}})
+        return str(collection.find_one({'username':username_header}))
+
+    return "No rights for action"
+
+
+
+@app.route('/users/profile_picture', methods = ['PUT'])
+def update_profile_picture():
+    collection = client.bookreviewer.users
+    
+    token = request.headers['token']
+    username_header = request.headers['username']
+
+    if verify_token(username, token) and is_admin(username):
+        file = request.files['profilePicture'];
+        filename = file.filename
+
+        if file and allowed_file(file.filename):
+            file.save(os.path.join(app.config['UPLOAD_FOLDER_2'], filename));
+            photoPath = '/profile-pictures/' + filename
+            collection.update_one({'username':username},{'$set':{'profilePicture':photoPath}})
+            return str(collection.find_one({'username':username}))
+    
+    return "failed"
 
 #get books by specified author
 @app.route('/users/username/<name>', methods=['GET'])
@@ -353,9 +404,16 @@ def get_one_user(name):
     output = []
 
     for q in collection.find({'username' : name}):
-        output.append({'_id': str(q['_id']), 'username': q['username'], 'admin' : q['admin'], 'email': q['email'], 
-            'fname': q['fname'], 'lname': q['lname'], 'password': q['password'], 'age': q['age'], 'gender': q['gender'], 
-            'booksRead': q['booksRead'], 'booksRated': q['booksRated'], 'reviewsRated': q['reviewsRated']})
+        if 'profilePicture' in q:
+            output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
+                'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
+                'age': q['age'], 'gender' : q['gender'], 'booksRead' : q['booksRead'], 
+                'booksRated' : q['booksRated'], 'reviewsRated' : q['reviewsRated'], 'profilePicture' : q['profilePicture']})
+        else:
+            output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
+                'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
+                'age': q['age'], 'gender' : q['gender'], 'booksRead' : q['booksRead'], 
+                'booksRated' : q['booksRated'], 'reviewsRated' : q['reviewsRated']})
 
     return jsonify({'results' : output})
 
@@ -623,6 +681,17 @@ def login():
     if (verify_password(username, password)):
         token = generate_auth_token(username)
         return str(token)
+
+    return str('Wrong password')
+
+
+@app.route('/quick_login', methods = ['get'])
+def quick_login():
+    username = request.headers['username']
+    password = request.headers['password']
+
+    if (verify_password(username, password)):
+        return "true"
 
     return str('Wrong password')
     
