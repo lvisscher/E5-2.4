@@ -58,7 +58,7 @@ def get_all_books():
 def search_books(query):
     collection = client.bookreviewer.books
     output = []
-    regex = re.compile(query)
+    regex = re.compile(query, re.IGNORECASE)
 
     for q in collection.find({"title" : regex}):
         output.append({ '_id' : str(q['_id']), 'isbn': q['isbn'], 'title': q['title'], 'author': q['author'], 'description': q['description'],
