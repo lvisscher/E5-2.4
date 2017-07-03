@@ -8,6 +8,7 @@ import string
 import random
 from flask_cors import CORS
 from bson.objectid import ObjectId
+import re
 
 app = Flask(__name__)
 hashing = Hashing(app)
@@ -45,6 +46,21 @@ def get_all_books():
     output = []
 
     for q in collection.find():
+        output.append({ '_id' : str(q['_id']), 'isbn': q['isbn'], 'title': q['title'], 'author': q['author'], 'description': q['description'],
+                        'pubDate': q['pubDate'], 'publisher': q['publisher'], 'language': q['language'], 'pages': q['pages'],
+                        'rating': q['rating'], 'rateCount': q['rateCount'], 'photoPath': q['photoPath']})
+
+    return jsonify({'results' : output})
+
+
+#get all the books
+@app.route('/search/books/<query>', methods=['GET'])
+def search_books(query):
+    collection = client.bookreviewer.books
+    output = []
+    regex = re.compile(query)
+
+    for q in collection.find({"title" : regex}):
         output.append({ '_id' : str(q['_id']), 'isbn': q['isbn'], 'title': q['title'], 'author': q['author'], 'description': q['description'],
                         'pubDate': q['pubDate'], 'publisher': q['publisher'], 'language': q['language'], 'pages': q['pages'],
                         'rating': q['rating'], 'rateCount': q['rateCount'], 'photoPath': q['photoPath']})
@@ -432,7 +448,7 @@ def get_review_by_ISBN(isbn):
 
     for ni in collection.find({'reviewOnBook' : isbn}):
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
-              'rateCount' : ni['rateCount'], 'reviewOnBook' : ni['reviewOnBook'], 
+              'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
               'comments': ni['comments']})
 
     return jsonify({'results' : output})
@@ -446,7 +462,7 @@ def get_review_by_user(username):
 
     for ni in collection.find({'reviewBy' : username}):
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
-              'rateCount' : ni['rateCount'], 'reviewOnBook' : ni['reviewOnBook'], 
+              'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
               'comments': ni['comments']})
 
     return jsonify({'results' : output})
@@ -459,7 +475,7 @@ def get_review_by_ID(rid):
 
     for ni in collection.find({'_id' : ObjectId(rid)}):
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
-              'rateCount' : ni['rateCount'], 'reviewOnBook' : ni['reviewOnBook'], 
+              'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
               'comments': ni['comments']})
 
     return jsonify({'results' : output})
@@ -473,7 +489,7 @@ def get_all_reviews():
 
     for ni in collection.find():
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
-              'rateCount' : ni['rateCount'], 'reviewOnBook' : ni['reviewOnBook'], 
+              'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
               'comments': ni['comments']})
 
     return jsonify({'results' : output})
@@ -482,7 +498,6 @@ def get_all_reviews():
 @app.route('/reviews', methods=['POST'])
 def add_review():
     collection = client.bookreviewer.reviews
-
 
     token = request.headers['token']
     username_header = request.headers['username']
@@ -494,15 +509,17 @@ def add_review():
         rateCount = 0
         rating = 0
         reviewOnBook = request.form['reviewOnBook']
+        bookTitle = request.form['bookTitle']
         comments = []
+        usersRated = [] 
 
         insert_id = collection.insert({'reviewTitle' : reviewTitle, 'reviewBy' : reviewBy ,'content' : content, 'rating' : rating, 'rateCount' : rateCount,
-                                       'reviewOnBook' : reviewOnBook, 'comments' : comments})
+                                       'reviewOnBook' : reviewOnBook, 'bookTitle' : bookTitle, 'comments' : comments})
 
         ni = collection.find_one({'_id' : insert_id})
 
         output = {'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
-                  'rateCount' : ni['rateCount'], 'reviewOnBook' : ni['reviewOnBook'], 
+                  'rateCount' : ni['rateCount'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
                   'comments': ni['comments']}
 
         return jsonify({'results' : output})
@@ -519,16 +536,18 @@ def update_rating_review(rid,rating):
     token = request.headers['token']
     username_header = request.headers['username']
 
-    if (verify_token(username_header, token)):
+
+    if (verify_token(username_header, token) and username_header not in review['usersRated']):
         count = review['rateCount']
         ratingDB = review['rating']
         total = (count * ratingDB) + float(rating)
         newCount = count + 1
         newRating = total / newCount
         collection.update_one({'_id':ObjectId(rid)},{'$set':{'rateCount':newCount, 'rating':newRating}})
+        collection.update_one({'_id':ObjectId(rid)},{'$push':{'usersRated':username_header}})
         return str(collection.find_one({'_id':ObjectId(rid)}))
     
-    return "No rights"   
+    return "No rights or already rated"   
 
 
 @app.route('/reviews/update/<rid>/<field>', methods = ['PUT'])
@@ -624,7 +643,7 @@ def generate_auth_token(username):
     #https://stackoverflow.com/questions/2257441/random-string-generation-with-upper-case-letters-and-digits-in-python
     token = ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(10))
     
-    collection.ensure_index("currentTime", expireAfterSeconds=3600)
+    collection.ensure_index("currentTime", expireAfterSeconds=10800)
     currentTime = datetime.utcnow()
 
     collection.insert({'currentTime' : currentTime, 'username' : username ,'token' : token})
@@ -684,7 +703,7 @@ def login():
     return str('Wrong password')
 
 
-@app.route('/quick_login', methods = ['get'])
+@app.route('/quick_login', methods = ['GET'])
 def quick_login():
     username = request.headers['username']
     password = request.headers['password']
