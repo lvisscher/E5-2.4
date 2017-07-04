@@ -52,6 +52,29 @@ def get_all_books():
 
     return jsonify({'results' : output})
 
+@app.route('/books/count' , methods=['GET'])
+def get_book_count():
+    collection = client.bookreviewer.books
+
+    count = collection.count()
+
+    return str(count)
+
+#get all the books
+@app.route('/books/page/<pagenr>', methods=['GET'])
+def get_page_books(pagenr):
+    collection = client.bookreviewer.books
+    output = []
+
+    start = int(pagenr) * 24
+    end = start + 24
+
+    for q in collection.find()[start:end]:
+        output.append({ '_id' : str(q['_id']), 'isbn': q['isbn'], 'title': q['title'], 'author': q['author'], 'description': q['description'],
+                        'pubDate': q['pubDate'], 'publisher': q['publisher'], 'language': q['language'], 'pages': q['pages'],
+                        'rating': q['rating'], 'rateCount': q['rateCount'], 'photoPath': q['photoPath']})
+
+    return jsonify({'results' : output})
 
 #get all the books
 @app.route('/search/books/<query>', methods=['GET'])
@@ -137,12 +160,14 @@ def add_book():
 
 
     if verify_token(username, token) and is_admin(username):
-        file = request.files['bookPhoto'];
-        filename = file.filename
+        file = request.files['bookPhoto']
+        originalFilename = file.filename
+        filename, file_extension = os.path.splitext(originalFilename)
+        saveFilename = request.form['isbn'] + file_extension
 
         if file and allowed_file(file.filename):
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename));
-            photoPath = '/book-images/' + filename
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], saveFilename))
+            photoPath = '/book-images/' + saveFilename
 
         isbn = request.form['isbn']
         title = request.form['title']
@@ -270,6 +295,28 @@ def get_all_users():
     output = []
 
     for q in collection.find():
+        if 'profilePicture' in q:
+            output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
+                'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
+                'age': q['age'], 'gender' : q['gender'], 'booksRead' : q['booksRead'], 
+                'booksRated' : q['booksRated'], 'reviewsRated' : q['reviewsRated'], 'profilePicture' : q['profilePicture']})
+        else:
+            output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
+                'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
+                'age': q['age'], 'gender' : q['gender'], 'booksRead' : q['booksRead'], 
+                'booksRated' : q['booksRated'], 'reviewsRated' : q['reviewsRated']})
+
+    return jsonify({'results' : output})
+
+
+#get all the books
+@app.route('/search/users/<query>', methods=['GET'])
+def search_users(query):
+    collection = client.bookreviewer.users
+    output = []
+    regex = re.compile(query, re.IGNORECASE)
+
+    for q in collection.find({"username" : regex}):
         if 'profilePicture' in q:
             output.append({'username' : q['username'], 'admin' : q['admin'], 'email' : q['email'], 
                 'fname' : q['fname'], 'lname' : q['lname'], 'password' : q['password'], 
@@ -415,12 +462,15 @@ def update_profile_picture():
     username_header = request.headers['username']
 
     if verify_token(username_header, token):
-        file = request.files['profilePicture'];
-        filename = file.filename
+        file = request.files['profilePicture']
+        originalFilename = file.filename
+        filename, file_extension = os.path.splitext(originalFilename)
+        saveFilename = username_header + file_extension
+
 
         if file and allowed_file(file.filename):
-            file.save(os.path.join('/var/www/html/profile-pictures/', filename));
-            photoPath = '/profile-pictures/' + filename
+            file.save(os.path.join('/var/www/html/profile-pictures/', saveFilename))
+            photoPath = '/profile-pictures/' + saveFilename
             collection.update_one({'username':username_header},{'$set':{'profilePicture':photoPath}})
             return str(collection.find_one({'username':username_header}))
     
