@@ -184,6 +184,20 @@ def delete_book(isbn):
         return "Ok"
 
     return "Admin rights needed"
+
+
+@app.route('/books/delete_pages/<pages>', methods = ['DELETE'])
+def delete_book_by_pages(pages):
+    collection = client.bookreviewer.books
+
+    token = request.headers['token']
+    username = request.headers['username']
+
+    if verify_token(username, token) and is_admin(username):
+        collection.find_one_and_delete({'pages': pages})
+        return "Ok"
+
+    return "Admin rights needed"
     
 
 
@@ -565,7 +579,7 @@ def update_review(rid,field):
     return "No rights"   
 
     
-@app.route('/books/delete/<rid>', methods = ['DELETE'])
+@app.route('/reviews/delete/<rid>', methods = ['DELETE'])
 def delete_review(rid):
     collection = client.bookreviewer.reviews
 
@@ -599,6 +613,20 @@ def add_comment(rid):
 
         return str(collection.find_one({'_id':ObjectId(rid)}))
     
+
+@app.route('/comments/delete/<rid>/<commentNumber>', methods = ['PUT'])
+def delete_comment(rid, commentNumber):
+    collection = client.bookreviewer.reviews
+
+    token = request.headers['token']
+    username = request.headers['username']
+
+    if verify_token(username, token) and is_admin(username):
+        collection.update_one({'_id': ObjectId(rid)}, {'$set': {"comments."+commentNumber+".content" : 'Deleted comment'}})
+        return "Ok"
+
+    return "Admin rights needed"
+
 
 
 
