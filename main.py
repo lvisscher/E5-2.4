@@ -103,6 +103,20 @@ def get_top_books():
 
     return jsonify({'results' : output})
 
+
+#get all the books
+@app.route('/lastAdded/books', methods=['GET'])
+def get_last_books():
+    collection = client.bookreviewer.books
+    output = []
+
+    for q in collection.find()[0:10].sort("_id", -1):
+        output.append({ '_id' : str(q['_id']), 'isbn': q['isbn'], 'title': q['title'], 'author': q['author'], 'description': q['description'],
+                        'pubDate': q['pubDate'], 'publisher': q['publisher'], 'language': q['language'], 'pages': q['pages'],
+                        'rating': q['rating'], 'rateCount': q['rateCount'], 'photoPath': q['photoPath']})
+
+    return jsonify({'results' : output})
+
 #get books by specified author
 @app.route('/books/author/<name>', methods=['GET'])
 def get_one_author(name):
@@ -224,19 +238,6 @@ def delete_book(isbn):
     return "Admin rights needed"
 
 
-@app.route('/books/delete_pages/<pages>', methods = ['DELETE'])
-def delete_book_by_pages(pages):
-    collection = client.bookreviewer.books
-
-    token = request.headers['token']
-    username = request.headers['username']
-
-    if verify_token(username, token) and is_admin(username):
-        collection.find_one_and_delete({'pages': pages})
-        return "Ok"
-
-    return "Admin rights needed"
-    
 
 
 @app.route('/books/update/<int:isbn>/<field>', methods = ['PUT'])
@@ -528,7 +529,7 @@ def get_review_by_ISBN(isbn):
     for ni in collection.find({'reviewOnBook' : isbn}):
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
               'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
-              'comments': ni['comments']})
+              'comments': ni['comments'], 'usersRated': ni['usersRated']})
 
     return jsonify({'results' : output})
 
@@ -542,7 +543,7 @@ def get_review_by_user(username):
     for ni in collection.find({'reviewBy' : username}):
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
               'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
-              'comments': ni['comments']})
+              'comments': ni['comments'], 'usersRated': ni['usersRated']})
 
     return jsonify({'results' : output})
 
@@ -555,7 +556,7 @@ def get_review_by_ID(rid):
     for ni in collection.find({'_id' : ObjectId(rid)}):
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
               'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
-              'comments': ni['comments']})
+              'comments': ni['comments'], 'usersRated': ni['usersRated']})
 
     return jsonify({'results' : output})
 
@@ -569,7 +570,7 @@ def get_all_reviews():
     for ni in collection.find():
         output.append({'_id': str(ni['_id']), 'reviewTitle' : ni['reviewTitle'], 'reviewBy' : ni['reviewBy'], 'content' : ni['content'],
               'rateCount' : ni['rateCount'], 'rating' : ni['rating'], 'reviewOnBook' : ni['reviewOnBook'], 'bookTitle' : ni['bookTitle'],
-              'comments': ni['comments']})
+              'comments': ni['comments'], 'usersRated': ni['usersRated']})
 
     return jsonify({'results' : output})
 
@@ -593,7 +594,7 @@ def add_review():
         usersRated = [] 
 
         insert_id = collection.insert({'reviewTitle' : reviewTitle, 'reviewBy' : reviewBy ,'content' : content, 'rating' : rating, 'rateCount' : rateCount,
-                                       'reviewOnBook' : reviewOnBook, 'bookTitle' : bookTitle, 'comments' : comments})
+                                       'reviewOnBook' : reviewOnBook, 'bookTitle' : bookTitle, 'comments' : comments, 'usersRated' : usersRated})
 
         ni = collection.find_one({'_id' : insert_id})
 
@@ -616,7 +617,7 @@ def update_rating_review(rid,rating):
     username_header = request.headers['username']
 
 
-    if (verify_token(username_header, token) and username_header not in review['usersRated']):
+    if (verify_token(username_header, token)):
         count = review['rateCount']
         ratingDB = review['rating']
         total = (count * ratingDB) + float(rating)
@@ -627,6 +628,8 @@ def update_rating_review(rid,rating):
         return str(collection.find_one({'_id':ObjectId(rid)}))
     
     return "No rights or already rated"   
+
+
 
 
 @app.route('/reviews/update/<rid>/<field>', methods = ['PUT'])
@@ -746,7 +749,6 @@ def verify_password(username, password):
     if hashing.check_value(user['password'], password, salt='zout'):
         return True
     return False
-
 
 
 def generate_auth_token(username):
