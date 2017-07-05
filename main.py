@@ -90,6 +90,19 @@ def search_books(query):
 
     return jsonify({'results' : output})
 
+#get all the books
+@app.route('/topbooks', methods=['GET'])
+def get_top_books():
+    collection = client.bookreviewer.books
+    output = []
+
+    for q in collection.find()[0:10].sort("rating", -1):
+        output.append({ '_id' : str(q['_id']), 'isbn': q['isbn'], 'title': q['title'], 'author': q['author'], 'description': q['description'],
+                        'pubDate': q['pubDate'], 'publisher': q['publisher'], 'language': q['language'], 'pages': q['pages'],
+                        'rating': q['rating'], 'rateCount': q['rateCount'], 'photoPath': q['photoPath']})
+
+    return jsonify({'results' : output})
+
 #get books by specified author
 @app.route('/books/author/<name>', methods=['GET'])
 def get_one_author(name):
@@ -263,12 +276,14 @@ def update_rating_book(rid,rating):
 @app.route('/books/update_rating_by_isbn/<isbn>/<rating>', methods = ['PUT'])
 def update_rating_book_by_isbn(isbn,rating):
     collection = client.bookreviewer.books
+    collection2 = client.bookreviewer.users
 
     book = collection.find_one({'isbn':isbn})
     token = request.headers['token']
     username_header = request.headers['username']
 
     if (verify_token(username_header, token)):
+        collection2.update_one({'username':username_header},{'$push':{"booksRated":isbn}})
         count = book['rateCount']
         ratingDB = book['rating']
         total = (count * ratingDB) + float(rating)
@@ -655,6 +670,26 @@ def add_comment(rid):
         posted = datetime.utcnow()
         author = username_header
         content = request.form['content']
+        comments = []
+
+        comment = {'posted' : posted, 'author' : author, 'content' : content, 'comments': comments}
+
+        collection.update_one({'_id':ObjectId(rid)},{'$push':{'comments':comment}})
+
+        return str(collection.find_one({'_id':ObjectId(rid)}))
+
+
+@app.route('/reviews/updatecomments/alternative/<rid>', methods = ['POST'])
+def add_comment_alternative(rid):
+    collection = client.bookreviewer.reviews
+    
+    token = request.headers['token']
+    username_header = request.headers['username']
+
+    if verify_token(username_header, token):
+        posted = datetime.utcnow()
+        author = username_header
+        content = request.json['content']
         comments = []
 
         comment = {'posted' : posted, 'author' : author, 'content' : content, 'comments': comments}
